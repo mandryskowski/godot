@@ -184,7 +184,7 @@ void main() {
 			vec4 test_normal_roughness = imageLoad(source_normal_roughness, test_pos);
 			vec3 test_normal = test_normal_roughness.xyz * 2.0 - 1.0;
 			test_normal = normalize(test_normal);
-			test_normal.y = -test_normal.y; // because this code reads flipped
+			test_normal.y = -test_normal.y; // Because this code reads flipped.
 
 			if (dot(ray_dir, test_normal) < 0.001) {
 				// if depth was surpassed
