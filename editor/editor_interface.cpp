@@ -41,10 +41,12 @@
 #include "editor/filesystem_dock.h"
 #include "editor/gui/editor_run_bar.h"
 #include "editor/inspector_dock.h"
+#include "editor/plugins/node_3d_editor_plugin.h"
 #include "main/main.h"
 #include "scene/gui/box_container.h"
 #include "scene/gui/control.h"
 #include "scene/main/window.h"
+#include "scene/resources/theme.h"
 
 EditorInterface *EditorInterface::singleton = nullptr;
 
@@ -196,6 +198,10 @@ bool EditorInterface::is_plugin_enabled(const String &p_plugin) const {
 
 // Editor GUI.
 
+Ref<Theme> EditorInterface::get_editor_theme() const {
+	return EditorNode::get_singleton()->get_editor_theme();
+}
+
 Control *EditorInterface::get_base_control() const {
 	return EditorNode::get_singleton()->get_gui_base();
 }
@@ -206,6 +212,15 @@ VBoxContainer *EditorInterface::get_editor_main_screen() const {
 
 ScriptEditor *EditorInterface::get_script_editor() const {
 	return ScriptEditor::get_singleton();
+}
+
+SubViewport *EditorInterface::get_editor_viewport_2d() const {
+	return EditorNode::get_singleton()->get_scene_root();
+}
+
+SubViewport *EditorInterface::get_editor_viewport_3d(int p_idx) const {
+	ERR_FAIL_INDEX_V(p_idx, static_cast<int>(Node3DEditor::VIEWPORTS_COUNT), nullptr);
+	return Node3DEditor::get_singleton()->get_editor_viewport(p_idx)->get_viewport_node();
 }
 
 void EditorInterface::set_main_screen_editor(const String &p_name) {
@@ -289,7 +304,7 @@ void EditorInterface::edit_node(Node *p_node) {
 }
 
 void EditorInterface::edit_script(const Ref<Script> &p_script, int p_line, int p_col, bool p_grab_focus) {
-	ScriptEditor::get_singleton()->edit(p_script, p_line, p_col, p_grab_focus);
+	ScriptEditor::get_singleton()->edit(p_script, p_line - 1, p_col - 1, p_grab_focus);
 }
 
 void EditorInterface::open_scene_from_path(const String &scene_path) {
@@ -344,6 +359,10 @@ void EditorInterface::save_scene_as(const String &p_scene, bool p_with_preview) 
 
 void EditorInterface::mark_scene_as_unsaved() {
 	EditorUndoRedoManager::get_singleton()->set_history_as_unsaved(EditorNode::get_editor_data().get_current_edited_scene_history_id());
+}
+
+void EditorInterface::save_all_scenes() {
+	EditorNode::get_singleton()->save_all_scenes();
 }
 
 // Scene playback.
@@ -401,9 +420,12 @@ void EditorInterface::_bind_methods() {
 
 	// Editor GUI.
 
+	ClassDB::bind_method(D_METHOD("get_editor_theme"), &EditorInterface::get_editor_theme);
 	ClassDB::bind_method(D_METHOD("get_base_control"), &EditorInterface::get_base_control);
 	ClassDB::bind_method(D_METHOD("get_editor_main_screen"), &EditorInterface::get_editor_main_screen);
 	ClassDB::bind_method(D_METHOD("get_script_editor"), &EditorInterface::get_script_editor);
+	ClassDB::bind_method(D_METHOD("get_editor_viewport_2d"), &EditorInterface::get_editor_viewport_2d);
+	ClassDB::bind_method(D_METHOD("get_editor_viewport_3d", "idx"), &EditorInterface::get_editor_viewport_3d, DEFVAL(0));
 
 	ClassDB::bind_method(D_METHOD("set_main_screen_editor", "name"), &EditorInterface::set_main_screen_editor);
 	ClassDB::bind_method(D_METHOD("set_distraction_free_mode", "enter"), &EditorInterface::set_distraction_free_mode);
@@ -446,6 +468,7 @@ void EditorInterface::_bind_methods() {
 
 	ClassDB::bind_method(D_METHOD("save_scene"), &EditorInterface::save_scene);
 	ClassDB::bind_method(D_METHOD("save_scene_as", "path", "with_preview"), &EditorInterface::save_scene_as, DEFVAL(true));
+	ClassDB::bind_method(D_METHOD("save_all_scenes"), &EditorInterface::save_all_scenes);
 
 	ClassDB::bind_method(D_METHOD("mark_scene_as_unsaved"), &EditorInterface::mark_scene_as_unsaved);
 
@@ -469,7 +492,7 @@ void EditorInterface::create() {
 }
 
 void EditorInterface::free() {
-	ERR_FAIL_COND(singleton == nullptr);
+	ERR_FAIL_NULL(singleton);
 	memdelete(singleton);
 }
 

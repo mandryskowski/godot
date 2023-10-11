@@ -67,6 +67,7 @@
 		ds->window_set_transient(window_id, DisplayServerMacOS::INVALID_WINDOW_ID);
 	}
 
+	ds->mouse_exit_window(window_id);
 	ds->window_destroy(window_id);
 }
 
@@ -156,7 +157,7 @@
 
 	DisplayServerMacOS::WindowData &wd = ds->get_window(window_id);
 	if (wd.exclusive_fullscreen) {
-		[NSApp setPresentationOptions:NSApplicationPresentationDefault];
+		ds->update_presentation_mode();
 	}
 
 	wd.fullscreen = false;
@@ -255,11 +256,7 @@
 	ds->window_resize(window_id, wd.size.width, wd.size.height);
 
 	if (!wd.rect_changed_callback.is_null()) {
-		Variant size = Rect2i(ds->window_get_position(window_id), ds->window_get_size(window_id));
-		Variant *sizep = &size;
-		Variant ret;
-		Callable::CallError ce;
-		wd.rect_changed_callback.callp((const Variant **)&sizep, 1, ret, ce);
+		wd.rect_changed_callback.call(Rect2i(ds->window_get_position(window_id), ds->window_get_size(window_id)));
 	}
 }
 
@@ -282,11 +279,7 @@
 	ds->release_pressed_events();
 
 	if (!wd.rect_changed_callback.is_null()) {
-		Variant size = Rect2i(ds->window_get_position(window_id), ds->window_get_size(window_id));
-		Variant *sizep = &size;
-		Variant ret;
-		Callable::CallError ce;
-		wd.rect_changed_callback.callp((const Variant **)&sizep, 1, ret, ce);
+		wd.rect_changed_callback.call(Rect2i(ds->window_get_position(window_id), ds->window_get_size(window_id)));
 	}
 }
 
@@ -361,6 +354,15 @@
 		ds->set_last_focused_window(window_id);
 		ds->send_window_event(wd, DisplayServerMacOS::WINDOW_EVENT_FOCUS_IN);
 	}
+}
+
+- (void)windowDidChangeOcclusionState:(NSNotification *)notification {
+	DisplayServerMacOS *ds = (DisplayServerMacOS *)DisplayServer::get_singleton();
+	if (!ds || !ds->has_window(window_id)) {
+		return;
+	}
+	DisplayServerMacOS::WindowData &wd = ds->get_window(window_id);
+	wd.is_visible = ([wd.window_object occlusionState] & NSWindowOcclusionStateVisible) && [wd.window_object isVisible];
 }
 
 @end

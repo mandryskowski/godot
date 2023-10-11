@@ -41,6 +41,8 @@
 #include "editor/editor_node.h"
 #include "editor/editor_paths.h"
 #include "editor/editor_scale.h"
+#include "editor/editor_string_names.h"
+#include "editor/import/resource_importer_texture_settings.h"
 #include "scene/resources/image_texture.h"
 
 #include "modules/modules_enabled.gen.h" // For svg and regex.
@@ -342,7 +344,9 @@ List<String> EditorExportPlatformMacOS::get_binary_extensions(const Ref<EditorEx
 			list.push_back("dmg");
 #endif
 			list.push_back("zip");
+#ifndef WINDOWS_ENABLED
 			list.push_back("app");
+#endif
 		} else if (dist_type == 1) {
 #ifdef MACOS_ENABLED
 			list.push_back("dmg");
@@ -376,10 +380,11 @@ void EditorExportPlatformMacOS::get_export_options(List<ExportOption> *r_options
 	r_options->push_back(ExportOption(PropertyInfo(Variant::STRING, "application/signature"), ""));
 	r_options->push_back(ExportOption(PropertyInfo(Variant::STRING, "application/app_category", PROPERTY_HINT_ENUM, "Business,Developer-tools,Education,Entertainment,Finance,Games,Action-games,Adventure-games,Arcade-games,Board-games,Card-games,Casino-games,Dice-games,Educational-games,Family-games,Kids-games,Music-games,Puzzle-games,Racing-games,Role-playing-games,Simulation-games,Sports-games,Strategy-games,Trivia-games,Word-games,Graphics-design,Healthcare-fitness,Lifestyle,Medical,Music,News,Photography,Productivity,Reference,Social-networking,Sports,Travel,Utilities,Video,Weather"), "Games"));
 	r_options->push_back(ExportOption(PropertyInfo(Variant::STRING, "application/short_version"), "1.0"));
-	r_options->push_back(ExportOption(PropertyInfo(Variant::STRING, "application/version"), "1.0"));
+	r_options->push_back(ExportOption(PropertyInfo(Variant::STRING, "application/version", PROPERTY_HINT_PLACEHOLDER_TEXT, "Leave empty to use project version"), ""));
 	r_options->push_back(ExportOption(PropertyInfo(Variant::STRING, "application/copyright"), ""));
 	r_options->push_back(ExportOption(PropertyInfo(Variant::DICTIONARY, "application/copyright_localized", PROPERTY_HINT_LOCALIZABLE_STRING), Dictionary()));
 	r_options->push_back(ExportOption(PropertyInfo(Variant::STRING, "application/min_macos_version"), "10.12"));
+	r_options->push_back(ExportOption(PropertyInfo(Variant::INT, "application/export_angle", PROPERTY_HINT_ENUM, "Auto,Yes,No"), 0, true));
 	r_options->push_back(ExportOption(PropertyInfo(Variant::BOOL, "display/high_res"), true));
 
 	r_options->push_back(ExportOption(PropertyInfo(Variant::STRING, "xcode/platform_build"), "14C18"));
@@ -670,7 +675,7 @@ void EditorExportPlatformMacOS::_fix_plist(const Ref<EditorExportPreset> &p_pres
 		} else if (lines[i].find("$short_version") != -1) {
 			strnew += lines[i].replace("$short_version", p_preset->get("application/short_version")) + "\n";
 		} else if (lines[i].find("$version") != -1) {
-			strnew += lines[i].replace("$version", p_preset->get("application/version")) + "\n";
+			strnew += lines[i].replace("$version", p_preset->get_version("application/version")) + "\n";
 		} else if (lines[i].find("$signature") != -1) {
 			strnew += lines[i].replace("$signature", p_preset->get("application/signature")) + "\n";
 		} else if (lines[i].find("$app_category") != -1) {
@@ -1042,6 +1047,8 @@ Error EditorExportPlatformMacOS::_code_sign(const Ref<EditorExportPreset> &p_pre
 				args.push_back("--p12-password");
 				args.push_back(certificate_pass);
 			}
+			args.push_back("--code-signature-flags");
+			args.push_back("runtime");
 
 			args.push_back("-v"); /* provide some more feedback */
 
@@ -1134,7 +1141,6 @@ Error EditorExportPlatformMacOS::_code_sign(const Ref<EditorExportPreset> &p_pre
 
 Error EditorExportPlatformMacOS::_code_sign_directory(const Ref<EditorExportPreset> &p_preset, const String &p_path,
 		const String &p_ent_path, bool p_should_error_on_non_code) {
-#ifdef MACOS_ENABLED
 	static Vector<String> extensions_to_sign;
 
 	if (extensions_to_sign.is_empty()) {
@@ -1181,7 +1187,6 @@ Error EditorExportPlatformMacOS::_code_sign_directory(const Ref<EditorExportPres
 
 		current_file = dir_access->get_next();
 	}
-#endif
 
 	return OK;
 }
@@ -1220,7 +1225,7 @@ Error EditorExportPlatformMacOS::_copy_and_sign_files(Ref<DirAccess> &dir_access
 			if (extensions_to_sign.find(p_in_app_path.get_extension()) > -1) {
 				err = _code_sign(p_preset, p_in_app_path, p_ent_path, false);
 			}
-			if (is_executable(p_in_app_path)) {
+			if (dir_access->file_exists(p_in_app_path) && is_executable(p_in_app_path)) {
 				// chmod with 0755 if the file is executable.
 				FileAccess::set_unix_permissions(p_in_app_path, 0755);
 			}
@@ -1614,6 +1619,14 @@ Error EditorExportPlatformMacOS::export_project(const Ref<EditorExportPreset> &p
 	// Now process our template.
 	bool found_binary = false;
 
+	int export_angle = p_preset->get("application/export_angle");
+	bool include_angle_libs = false;
+	if (export_angle == 0) {
+		include_angle_libs = String(GLOBAL_GET("rendering/gl_compatibility/driver.macos")) == "opengl3_angle";
+	} else if (export_angle == 1) {
+		include_angle_libs = true;
+	}
+
 	while (ret == UNZ_OK && err == OK) {
 		// Get filename.
 		unz_file_info info;
@@ -1659,6 +1672,20 @@ Error EditorExportPlatformMacOS::export_project(const Ref<EditorExportPreset> &p
 
 			ret = unzGoToNextFile(src_pkg_zip);
 			continue; // next
+		}
+
+		if (file == "Contents/Frameworks/libEGL.dylib") {
+			if (!include_angle_libs) {
+				ret = unzGoToNextFile(src_pkg_zip);
+				continue; // skip
+			}
+		}
+
+		if (file == "Contents/Frameworks/libGLESv2.dylib") {
+			if (!include_angle_libs) {
+				ret = unzGoToNextFile(src_pkg_zip);
+				continue; // skip
+			}
 		}
 
 		if (file == "Contents/Info.plist") {
@@ -2122,16 +2149,12 @@ bool EditorExportPlatformMacOS::has_valid_export_configuration(const Ref<EditorE
 	// Check the texture formats, which vary depending on the target architecture.
 	String architecture = p_preset->get("binary_format/architecture");
 	if (architecture == "universal" || architecture == "x86_64") {
-		const String bc_error = test_bc();
-		if (!bc_error.is_empty()) {
+		if (!ResourceImporterTextureSettings::should_import_s3tc_bptc()) {
 			valid = false;
-			err += bc_error;
 		}
 	} else if (architecture == "arm64") {
-		const String etc_error = test_etc2();
-		if (!etc_error.is_empty()) {
+		if (!ResourceImporterTextureSettings::should_import_etc2_astc()) {
 			valid = false;
-			err += etc_error;
 		}
 	} else {
 		ERR_PRINT("Invalid architecture");
@@ -2461,7 +2484,7 @@ EditorExportPlatformMacOS::EditorExportPlatformMacOS() {
 
 		Ref<Theme> theme = EditorNode::get_singleton()->get_editor_theme();
 		if (theme.is_valid()) {
-			stop_icon = theme->get_icon(SNAME("Stop"), SNAME("EditorIcons"));
+			stop_icon = theme->get_icon(SNAME("Stop"), EditorStringName(EditorIcons));
 		} else {
 			stop_icon.instantiate();
 		}

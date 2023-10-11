@@ -51,6 +51,16 @@ void NavRegion::set_map(NavMap *p_map) {
 	}
 }
 
+void NavRegion::set_enabled(bool p_enabled) {
+	if (enabled == p_enabled) {
+		return;
+	}
+	enabled = p_enabled;
+
+	// TODO: This should not require a full rebuild as the region has not really changed.
+	polygons_dirty = true;
+};
+
 void NavRegion::set_use_edge_connections(bool p_enabled) {
 	if (use_edge_connections != p_enabled) {
 		use_edge_connections = p_enabled;
@@ -79,13 +89,13 @@ int NavRegion::get_connections_count() const {
 }
 
 Vector3 NavRegion::get_connection_pathway_start(int p_connection_id) const {
-	ERR_FAIL_COND_V(!map, Vector3());
+	ERR_FAIL_NULL_V(map, Vector3());
 	ERR_FAIL_INDEX_V(p_connection_id, connections.size(), Vector3());
 	return connections[p_connection_id].pathway_start;
 }
 
 Vector3 NavRegion::get_connection_pathway_end(int p_connection_id) const {
-	ERR_FAIL_COND_V(!map, Vector3());
+	ERR_FAIL_NULL_V(map, Vector3());
 	ERR_FAIL_INDEX_V(p_connection_id, connections.size(), Vector3());
 	return connections[p_connection_id].pathway_end;
 }
