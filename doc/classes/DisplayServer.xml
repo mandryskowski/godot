@@ -119,8 +119,10 @@
 			<param index="6" name="callback" type="Callable" />
 			<description>
 				Displays OS native dialog for selecting files or directories in the file system.
-				Callbacks have the following arguments: [code]bool status, PackedStringArray selected_paths, int selected_filter_index[/code].
+
+				Callbacks have the following arguments: [code]bool status, PackedStringArray selected_paths[/code].
 				[b]Note:[/b] This method is implemented if the display server has the [constant FEATURE_NATIVE_DIALOG] feature.
+
 				[b]Note:[/b] This method is implemented on Linux, Windows and macOS.
 				[b]Note:[/b] [param current_directory] might be ignored.
 				[b]Note:[/b] On Linux, [param show_hidden] is ignored.
